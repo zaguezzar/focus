@@ -32,8 +32,13 @@ export function launchUI(): void {
   const lastActiveId = db.session.lastActiveTaskId;
   const lastOpenedAt = db.session.lastOpenedAt;
 
-  // Restore selection to last active task
-  if (lastActiveId !== null) {
+  // Auto-detect task from current branch, fallback to last active
+  const currentBranch = store.getCurrentBranch();
+  const branchTask = currentBranch ? store.findTaskByBranch(db, currentBranch) : null;
+  if (branchTask) {
+    const idx = tasks.findIndex(t => t.id === branchTask.id);
+    if (idx !== -1) selectedIndex = idx;
+  } else if (lastActiveId !== null) {
     const idx = tasks.findIndex(t => t.id === lastActiveId);
     if (idx !== -1) selectedIndex = idx;
   }
@@ -253,7 +258,16 @@ export function launchUI(): void {
       lines.push(`{${COLORS.dimFg}-fg}Reason:{/}  {${COLORS.blockedFg}-fg}${task.blockedReason}{/}`);
     }
     if (task.gitBranch) {
-      lines.push(`{${COLORS.dimFg}-fg}Branch:{/}  ${task.gitBranch}`);
+      let branchInfo = task.gitBranch;
+      const status = store.getBranchStatus(task.gitBranch);
+      if (status) {
+        const parts: string[] = [];
+        if (status.ahead > 0) parts.push(`{${COLORS.doneFg}-fg}\u2191${status.ahead}{/}`);
+        if (status.behind > 0) parts.push(`{${COLORS.blockedFg}-fg}\u2193${status.behind}{/}`);
+        if (status.dirty) parts.push(`{${COLORS.mediumFg}-fg}*{/}`);
+        if (parts.length > 0) branchInfo += ' ' + parts.join(' ');
+      }
+      lines.push(`{${COLORS.dimFg}-fg}Branch:{/}  ${branchInfo}`);
     }
 
     const spent = task.timeSpent ?? 0;
@@ -286,6 +300,7 @@ export function launchUI(): void {
     }
     lines.push(`{${COLORS.accent}-fg}[n]{/} add note`);
     lines.push(`{${COLORS.accent}-fg}[p]{/} priority`);
+    lines.push(`{${COLORS.accent}-fg}[c]{/} new branch`);
     lines.push(`{${COLORS.accent}-fg}[g]{/} link branch`);
     lines.push(`{${COLORS.blockedFg}-fg}[x]{/} delete`);
 
@@ -390,6 +405,19 @@ export function launchUI(): void {
     db = store.load();
     selectedIndex--;
     render();
+  });
+
+  // Create branch from task
+  screen.key(['c'], () => {
+    if (inputBox.hidden === false) return;
+    if (tasks.length === 0) return;
+    const task = tasks[selectedIndex];
+    const branch = store.createBranchFromTask(task);
+    if (branch) {
+      store.linkBranch(db, task.id, branch);
+      db = store.load();
+      render();
+    }
   });
 
   screen.key(['g'], () => {
