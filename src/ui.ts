@@ -30,6 +30,39 @@ export function launchUI(): void {
   let searchQuery = '';
   let isSearching = false;
 
+  // Timer state
+  if (!db.session.timer) {
+    db.session.timer = { taskId: null, startedAt: null, duration: 25, paused: false, elapsed: 0 };
+  }
+  let timer = db.session.timer;
+  let timerInterval: ReturnType<typeof setInterval> | null = null;
+
+  function getTimerSeconds(): number {
+    if (!timer.startedAt) return 0;
+    if (timer.paused) return timer.elapsed;
+    return timer.elapsed + Math.floor((Date.now() - new Date(timer.startedAt).getTime()) / 1000);
+  }
+
+  function formatTimer(): string {
+    const total = timer.duration * 60;
+    const elapsed = getTimerSeconds();
+    const remaining = Math.max(0, total - elapsed);
+    const m = Math.floor(remaining / 60);
+    const s = remaining % 60;
+    const timeStr = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+
+    if (remaining === 0 && timer.startedAt) {
+      return `{${COLORS.highFg}-fg}{bold} DONE! ${timeStr} {/bold}{/}`;
+    }
+    if (timer.paused) {
+      return `{${COLORS.mediumFg}-fg} ${timeStr} (paused){/}`;
+    }
+    if (timer.startedAt) {
+      return `{${COLORS.doneFg}-fg} ${timeStr}{/}`;
+    }
+    return `{${COLORS.dimFg}-fg} ${timer.duration}:00{/}`;
+  }
+
   const screen = blessed.screen({
     smartCSR: true,
     title: 'focus',
@@ -141,7 +174,8 @@ export function launchUI(): void {
     const branch = store.getCurrentBranch();
     const branchStr = branch ? `{${COLORS.dimFg}-fg}git:{/}{${COLORS.activeFg}-fg}${branch}{/}` : '';
 
-    header.setContent(`\n {${COLORS.accent}-fg}{bold}FOCUS{/bold}{/}  ${filterTabs}${'  '.repeat(3)}${branchStr}`);
+    const timerStr = formatTimer();
+    header.setContent(`\n {${COLORS.accent}-fg}{bold}FOCUS{/bold}{/}  ${filterTabs}${'  '.repeat(3)}${timerStr}  ${branchStr}`);
   }
 
   function priorityTag(priority: TaskPriority): string {
@@ -260,9 +294,11 @@ export function launchUI(): void {
     db.session.selectedIndex = selectedIndex;
     db.session.viewFilter = currentFilter;
     db.session.lastOpenedAt = new Date().toISOString();
+    db.session.timer = timer;
     if (tasks.length > 0 && selectedIndex < tasks.length) {
       db.session.lastActiveTaskId = tasks[selectedIndex].id;
     }
+    if (timerInterval) clearInterval(timerInterval);
     store.save(db);
   }
 
@@ -503,6 +539,46 @@ export function launchUI(): void {
       render();
     }
   });
+
+  // Timer: t to start/pause, T to reset
+  screen.key(['t'], () => {
+    if (inputBox.hidden === false) return;
+    if (!timer.startedAt && !timer.paused) {
+      // Start fresh
+      timer.startedAt = new Date().toISOString();
+      timer.elapsed = 0;
+      timer.paused = false;
+      if (tasks.length > 0) timer.taskId = tasks[selectedIndex].id;
+    } else if (timer.paused) {
+      // Resume
+      timer.startedAt = new Date().toISOString();
+      timer.paused = false;
+    } else {
+      // Pause
+      timer.elapsed = getTimerSeconds();
+      timer.startedAt = null;
+      timer.paused = true;
+    }
+    db.session.timer = timer;
+    store.save(db);
+    render();
+  });
+
+  screen.key(['T'], () => {
+    if (inputBox.hidden === false) return;
+    timer = { taskId: null, startedAt: null, duration: 25, paused: false, elapsed: 0 };
+    db.session.timer = timer;
+    store.save(db);
+    render();
+  });
+
+  // Tick timer every second when running
+  timerInterval = setInterval(() => {
+    if (timer.startedAt && !timer.paused) {
+      renderHeader();
+      screen.render();
+    }
+  }, 1000);
 
   taskList.focus();
   render();

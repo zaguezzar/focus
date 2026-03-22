@@ -15,6 +15,7 @@ function defaultDB(): FocusDB {
       lastOpenedAt: new Date().toISOString(),
       selectedIndex: 0,
       viewFilter: 'all',
+      timer: { taskId: null, startedAt: null, duration: 25, paused: false, elapsed: 0 },
     },
   };
 }
