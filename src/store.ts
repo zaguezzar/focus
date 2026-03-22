@@ -108,10 +108,15 @@ export function setPriority(db: FocusDB, id: number, priority: TaskPriority): Ta
 
 const PRIORITY_ORDER: Record<TaskPriority, number> = { high: 0, medium: 1, low: 2 };
 
-export function getFilteredTasks(db: FocusDB, filter: 'all' | 'active' | 'blocked' | 'done'): Task[] {
-  const filtered = filter === 'all'
-    ? db.tasks.filter(t => t.status !== 'done')
-    : db.tasks.filter(t => t.status === filter);
+export function getFilteredTasks(db: FocusDB, filter: 'all' | 'active' | 'blocked' | 'done' | 'archive'): Task[] {
+  let filtered: Task[];
+  if (filter === 'all') {
+    filtered = db.tasks.filter(t => t.status !== 'done');
+  } else if (filter === 'archive') {
+    filtered = db.tasks.filter(t => t.status === 'done');
+  } else {
+    filtered = db.tasks.filter(t => t.status === filter);
+  }
   return filtered.sort((a, b) => PRIORITY_ORDER[a.priority ?? 'medium'] - PRIORITY_ORDER[b.priority ?? 'medium']);
 }
 
