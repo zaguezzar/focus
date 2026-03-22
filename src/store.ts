@@ -50,6 +50,7 @@ export function addTask(db: FocusDB, title: string, priority: TaskPriority = 'me
     title,
     status: 'active',
     priority,
+    subtasks: [],
     tags: [],
     notes: [],
     timeSpent: 0,
@@ -122,6 +123,17 @@ export function moveTask(db: FocusDB, id: number, direction: 'up' | 'down'): boo
   [db.tasks[idx], db.tasks[target]] = [db.tasks[target], db.tasks[idx]];
   save(db);
   return true;
+}
+
+export function addSubtask(db: FocusDB, parentId: number, title: string): Task | null {
+  const parent = db.tasks.find(t => t.id === parentId);
+  if (!parent) return null;
+  const task = addTask(db, title);
+  task.parentId = parentId;
+  if (!parent.subtasks) parent.subtasks = [];
+  parent.subtasks.push(task.id);
+  save(db);
+  return task;
 }
 
 export function getCurrentBranch(): string | null {
