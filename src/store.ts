@@ -131,3 +131,41 @@ export function getCurrentBranch(): string | null {
     return null;
   }
 }
+
+export function getBranchStatus(branch: string): { ahead: number; behind: number; dirty: boolean } | null {
+  try {
+    const { execSync } = require('node:child_process');
+    const run = (cmd: string) => execSync(cmd, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+    const currentBranch = run('git rev-parse --abbrev-ref HEAD');
+    if (currentBranch !== branch) return null;
+    let ahead = 0, behind = 0;
+    try {
+      const counts = run(`git rev-list --left-right --count ${branch}...@{upstream}`);
+      [ahead, behind] = counts.split('\t').map(Number);
+    } catch { /* no upstream */ }
+    const dirty = run('git status --porcelain').length > 0;
+    return { ahead, behind, dirty };
+  } catch {
+    return null;
+  }
+}
+
+export function createBranchFromTask(task: { id: number; title: string }): string | null {
+  try {
+    const { execSync } = require('node:child_process');
+    const slug = task.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 50);
+    const branch = `task/${task.id}-${slug}`;
+    execSync(`git checkout -b ${branch}`, { stdio: ['pipe', 'pipe', 'pipe'] });
+    return branch;
+  } catch {
+    return null;
+  }
+}
+
+export function findTaskByBranch(db: FocusDB, branch: string): Task | null {
+  return db.tasks.find(t => t.gitBranch === branch) ?? null;
+}
