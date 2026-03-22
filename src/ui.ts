@@ -101,7 +101,7 @@ export function launchUI(): void {
   const taskList = blessed.box({
     top: 3,
     left: 0,
-    width: '100%-30',
+    width: '100%-38',
     height: '100%-6',
     border: { type: 'line' },
     style: {
@@ -120,9 +120,10 @@ export function launchUI(): void {
   const detailPanel = blessed.box({
     top: 3,
     right: 0,
-    width: 30,
+    width: 38,
     height: '100%-6',
     border: { type: 'line' },
+    padding: { left: 2, right: 2, top: 1, bottom: 0 },
     style: {
       border: { fg: COLORS.border },
       bg: COLORS.bg,
