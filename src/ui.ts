@@ -430,14 +430,17 @@ export function launchUI(): void {
     render();
   });
 
-  // Delete task
+  // Delete task (with confirmation)
   screen.key(['x'], () => {
     if (inputBox.hidden === false) return;
     if (tasks.length === 0) return;
     const task = tasks[selectedIndex];
-    store.deleteTask(db, task.id);
-    db = store.load();
-    render();
+    promptInput(`Delete "#${task.id} ${task.title}"? (y/n)`, (value) => {
+      if (value.toLowerCase() === 'y' || value.toLowerCase() === 'yes') {
+        store.deleteTask(db, task.id);
+        db = store.load();
+      }
+    });
   });
 
   // Mouse support for task list
