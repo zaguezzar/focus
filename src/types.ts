@@ -8,6 +8,7 @@ export interface Task {
   priority: TaskPriority;
   blockedReason?: string;
   gitBranch?: string;
+  tags: string[];
   notes: string[];
   timeSpent: number; // total seconds spent working on this task
   createdAt: string;
