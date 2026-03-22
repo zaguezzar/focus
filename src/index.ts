@@ -18,6 +18,9 @@ function printHelp(): void {
     focus activate <id>     Reactivate a blocked/done task
     focus list              List active tasks
     focus link <id>         Link current git branch to task
+    focus now               Show current focused task
+    focus pick              Suggest a random active task
+    focus prompt            Minimal output for shell PS1
     focus help              Show this help
 
   UI Keys:
@@ -125,6 +128,40 @@ if (!command) {
   } else {
     console.error(`Task #${id} not found`);
     process.exit(1);
+  }
+} else if (command === 'now') {
+  const db = store.load();
+  const id = db.session.lastActiveTaskId;
+  if (id === null) {
+    console.log('No task focused');
+  } else {
+    const task = db.tasks.find(t => t.id === id);
+    if (task) {
+      printTask(task);
+    } else {
+      console.log('No task focused');
+    }
+  }
+} else if (command === 'pick') {
+  const db = store.load();
+  const active = db.tasks.filter(t => t.status === 'active');
+  if (active.length === 0) {
+    console.log('No active tasks to pick from');
+  } else {
+    const pick = active[Math.floor(Math.random() * active.length)];
+    console.log(`\n  How about this one?\n`);
+    printTask(pick);
+    console.log('');
+  }
+} else if (command === 'prompt') {
+  // For shell prompt integration: outputs minimal text for PS1
+  const db = store.load();
+  const id = db.session.lastActiveTaskId;
+  if (id !== null) {
+    const task = db.tasks.find(t => t.id === id);
+    if (task) {
+      process.stdout.write(`[#${task.id} ${task.title}]`);
+    }
   }
 } else if (command === 'help' || command === '--help' || command === '-h') {
   printHelp();
