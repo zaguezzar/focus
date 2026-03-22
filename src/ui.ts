@@ -261,6 +261,13 @@ export function launchUI(): void {
       lines.push(`{${COLORS.dimFg}-fg}Time:{/}    ${formatDuration(spent)}`);
     }
 
+    const notes = task.notes ?? [];
+    if (notes.length > 0) {
+      lines.push('');
+      lines.push(`{${COLORS.dimFg}-fg}--- Notes ---{/}`);
+      notes.forEach(n => lines.push(`{${COLORS.dimFg}-fg}\u2022{/} ${n}`));
+    }
+
     lines.push('');
     lines.push(`{${COLORS.dimFg}-fg}Created:{/} ${formatDate(task.createdAt)}`);
     lines.push(`{${COLORS.dimFg}-fg}Updated:{/} ${formatDate(task.updatedAt)}`);
@@ -277,6 +284,7 @@ export function launchUI(): void {
     } else if (task.status === 'done') {
       lines.push(`{${COLORS.activeFg}-fg}[r]{/} reactivate`);
     }
+    lines.push(`{${COLORS.accent}-fg}[n]{/} add note`);
     lines.push(`{${COLORS.accent}-fg}[p]{/} priority`);
     lines.push(`{${COLORS.accent}-fg}[g]{/} link branch`);
     lines.push(`{${COLORS.blockedFg}-fg}[x]{/} delete`);
@@ -459,6 +467,20 @@ export function launchUI(): void {
     store.setStatus(db, task.id, 'active');
     db = store.load();
     render();
+  });
+
+  // Add note
+  screen.key(['n'], () => {
+    if (inputBox.hidden === false) return;
+    if (tasks.length === 0) return;
+    const task = tasks[selectedIndex];
+    promptInput('Add note', (value) => {
+      if (!task.notes) task.notes = [];
+      task.notes.push(value);
+      task.updatedAt = new Date().toISOString();
+      store.save(db);
+      db = store.load();
+    });
   });
 
   // Edit task title

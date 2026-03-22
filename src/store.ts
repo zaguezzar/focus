@@ -50,6 +50,7 @@ export function addTask(db: FocusDB, title: string, priority: TaskPriority = 'me
     title,
     status: 'active',
     priority,
+    notes: [],
     timeSpent: 0,
     createdAt: now,
     updatedAt: now,
