@@ -109,6 +109,16 @@ export function getFilteredTasks(db: FocusDB, filter: 'all' | 'active' | 'blocke
   return filtered.sort((a, b) => PRIORITY_ORDER[a.priority ?? 'medium'] - PRIORITY_ORDER[b.priority ?? 'medium']);
 }
 
+export function moveTask(db: FocusDB, id: number, direction: 'up' | 'down'): boolean {
+  const idx = db.tasks.findIndex(t => t.id === id);
+  if (idx === -1) return false;
+  const target = direction === 'up' ? idx - 1 : idx + 1;
+  if (target < 0 || target >= db.tasks.length) return false;
+  [db.tasks[idx], db.tasks[target]] = [db.tasks[target], db.tasks[idx]];
+  save(db);
+  return true;
+}
+
 export function getCurrentBranch(): string | null {
   try {
     const { execSync } = require('node:child_process');

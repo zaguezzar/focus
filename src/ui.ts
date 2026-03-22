@@ -306,6 +306,27 @@ export function launchUI(): void {
     }
   });
 
+  // Reorder tasks
+  screen.key(['J'], () => {
+    if (inputBox.hidden === false) return;
+    if (tasks.length === 0 || selectedIndex >= tasks.length - 1) return;
+    const task = tasks[selectedIndex];
+    store.moveTask(db, task.id, 'down');
+    db = store.load();
+    selectedIndex++;
+    render();
+  });
+
+  screen.key(['K'], () => {
+    if (inputBox.hidden === false) return;
+    if (tasks.length === 0 || selectedIndex <= 0) return;
+    const task = tasks[selectedIndex];
+    store.moveTask(db, task.id, 'up');
+    db = store.load();
+    selectedIndex--;
+    render();
+  });
+
   screen.key(['g'], () => {
     if (inputBox.hidden === false) return;
     if (tasks.length === 0) return;
