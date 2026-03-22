@@ -27,6 +27,8 @@ export function launchUI(): void {
   let selectedIndex = db.session.selectedIndex;
   let currentFilter: ViewFilter = db.session.viewFilter as ViewFilter;
   let tasks = store.getFilteredTasks(db, currentFilter);
+  let searchQuery = '';
+  let isSearching = false;
 
   const screen = blessed.screen({
     smartCSR: true,
@@ -151,8 +153,14 @@ export function launchUI(): void {
   }
 
   function renderTasks(): void {
-    tasks = store.getFilteredTasks(db, currentFilter);
+    let filtered = store.getFilteredTasks(db, currentFilter);
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(t => t.title.toLowerCase().includes(q) || `#${t.id}` === q);
+    }
+    tasks = filtered;
     if (selectedIndex >= tasks.length) selectedIndex = Math.max(0, tasks.length - 1);
+    taskList.setLabel(searchQuery ? ` Tasks {${COLORS.accent}-fg}/${searchQuery}{/} ` : ' Tasks ');
 
     if (tasks.length === 0) {
       taskList.setContent(`\n  {${COLORS.dimFg}-fg}No tasks. Press {/}{${COLORS.accent}-fg}a{/}{${COLORS.dimFg}-fg} to add one.{/}`);
@@ -450,6 +458,26 @@ export function launchUI(): void {
     db.session.lastActiveTaskId = task.id;
     store.save(db);
     render();
+  });
+
+  // Search
+  screen.key(['/'], () => {
+    if (inputBox.hidden === false) return;
+    isSearching = true;
+    promptInput('Search', (value) => {
+      searchQuery = value;
+      selectedIndex = 0;
+      isSearching = false;
+    });
+  });
+
+  screen.key(['escape'], () => {
+    if (inputBox.hidden === false) return;
+    if (searchQuery) {
+      searchQuery = '';
+      selectedIndex = 0;
+      render();
+    }
   });
 
   taskList.focus();
