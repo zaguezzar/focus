@@ -29,6 +29,14 @@ export function launchUI(): void {
   let tasks = store.getFilteredTasks(db, currentFilter);
   let searchQuery = '';
   let isSearching = false;
+  const lastActiveId = db.session.lastActiveTaskId;
+  const lastOpenedAt = db.session.lastOpenedAt;
+
+  // Restore selection to last active task
+  if (lastActiveId !== null) {
+    const idx = tasks.findIndex(t => t.id === lastActiveId);
+    if (idx !== -1) selectedIndex = idx;
+  }
 
   // Timer state
   if (!db.session.timer) {
@@ -212,8 +220,10 @@ export function launchUI(): void {
       const blocked = task.status === 'blocked' && task.blockedReason
         ? ` {${COLORS.blockedFg}-fg}(${task.blockedReason}){/}`
         : '';
+      const isFocused = task.id === lastActiveId;
+      const focusMarker = isFocused ? `{${COLORS.accent}-fg}\u25C6{/}` : ' ';
       const cursor = selected ? '{bold}>{/bold}' : ' ';
-      return `${prefix} ${cursor} ${icon} ${prio} ${id} ${task.title}${branchTag}${blocked} ${suffix}`;
+      return `${prefix} ${cursor}${focusMarker}${icon} ${prio} ${id} ${task.title}${branchTag}${blocked} ${suffix}`;
     });
 
     taskList.setContent('\n' + lines.join('\n'));
@@ -226,13 +236,18 @@ export function launchUI(): void {
     }
 
     const task = tasks[selectedIndex];
-    const lines = [
-      `{bold}${task.title}{/bold}`,
-      '',
-      `{${COLORS.dimFg}-fg}ID:{/}      #${task.id}`,
-      `{${COLORS.dimFg}-fg}Status:{/}  ${statusIcon(task.status)} ${task.status}`,
-      `{${COLORS.dimFg}-fg}Priority:{/}${priorityTag(task.priority ?? 'medium')} ${task.priority ?? 'medium'}`,
-    ];
+    const isFocused = task.id === lastActiveId;
+    const lines: string[] = [];
+    if (isFocused && lastOpenedAt) {
+      lines.push(`{${COLORS.accent}-fg}\u25C6 Last focused{/}`);
+      lines.push(`{${COLORS.dimFg}-fg}  ${formatDate(lastOpenedAt)}{/}`);
+      lines.push('');
+    }
+    lines.push(`{bold}${task.title}{/bold}`);
+    lines.push('');
+    lines.push(`{${COLORS.dimFg}-fg}ID:{/}      #${task.id}`);
+    lines.push(`{${COLORS.dimFg}-fg}Status:{/}  ${statusIcon(task.status)} ${task.status}`);
+    lines.push(`{${COLORS.dimFg}-fg}Priority:{/}${priorityTag(task.priority ?? 'medium')} ${task.priority ?? 'medium'}`);
 
     if (task.blockedReason) {
       lines.push(`{${COLORS.dimFg}-fg}Reason:{/}  {${COLORS.blockedFg}-fg}${task.blockedReason}{/}`);
