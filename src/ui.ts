@@ -256,6 +256,11 @@ export function launchUI(): void {
       lines.push(`{${COLORS.dimFg}-fg}Branch:{/}  ${task.gitBranch}`);
     }
 
+    const spent = task.timeSpent ?? 0;
+    if (spent > 0) {
+      lines.push(`{${COLORS.dimFg}-fg}Time:{/}    ${formatDuration(spent)}`);
+    }
+
     lines.push('');
     lines.push(`{${COLORS.dimFg}-fg}Created:{/} ${formatDate(task.createdAt)}`);
     lines.push(`{${COLORS.dimFg}-fg}Updated:{/} ${formatDate(task.updatedAt)}`);
@@ -306,6 +311,7 @@ export function launchUI(): void {
   }
 
   function saveSession(): void {
+    flushFocusTime();
     db.session.selectedIndex = selectedIndex;
     db.session.viewFilter = currentFilter;
     db.session.lastOpenedAt = new Date().toISOString();
@@ -525,12 +531,25 @@ export function launchUI(): void {
   screen.key(['home'], () => { selectedIndex = 0; render(); });
   screen.key(['end'], () => { selectedIndex = Math.max(0, tasks.length - 1); render(); });
 
+  function flushFocusTime(): void {
+    if (db.session.focusStartedAt && db.session.lastActiveTaskId !== null) {
+      const elapsed = Math.floor((Date.now() - new Date(db.session.focusStartedAt).getTime()) / 1000);
+      const task = db.tasks.find(t => t.id === db.session.lastActiveTaskId);
+      if (task && elapsed > 0) {
+        task.timeSpent = (task.timeSpent ?? 0) + elapsed;
+      }
+      db.session.focusStartedAt = null;
+    }
+  }
+
   // Enter to focus/select current task as "working on"
   screen.key(['enter', 'return'], () => {
     if (inputBox.hidden === false) return;
     if (tasks.length === 0) return;
+    flushFocusTime();
     const task = tasks[selectedIndex];
     db.session.lastActiveTaskId = task.id;
+    db.session.focusStartedAt = new Date().toISOString();
     store.save(db);
     render();
   });
@@ -597,6 +616,13 @@ export function launchUI(): void {
 
   taskList.focus();
   render();
+}
+
+function formatDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
 }
 
 function formatDate(iso: string): string {

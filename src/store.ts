@@ -16,6 +16,7 @@ function defaultDB(): FocusDB {
       selectedIndex: 0,
       viewFilter: 'all',
       timer: { taskId: null, startedAt: null, duration: 25, paused: false, elapsed: 0 },
+      focusStartedAt: null,
     },
   };
 }
@@ -49,6 +50,7 @@ export function addTask(db: FocusDB, title: string, priority: TaskPriority = 'me
     title,
     status: 'active',
     priority,
+    timeSpent: 0,
     createdAt: now,
     updatedAt: now,
   };
