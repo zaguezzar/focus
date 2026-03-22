@@ -13,11 +13,20 @@ export interface Task {
   doneAt?: string;
 }
 
+export interface TimerState {
+  taskId: number | null;
+  startedAt: string | null;
+  duration: number; // minutes
+  paused: boolean;
+  elapsed: number; // seconds elapsed before pause
+}
+
 export interface SessionContext {
   lastActiveTaskId: number | null;
   lastOpenedAt: string;
   selectedIndex: number;
   viewFilter: 'all' | 'active' | 'blocked' | 'done';
+  timer: TimerState;
 }
 
 export interface FocusDB {
