@@ -1,9 +1,11 @@
 export type TaskStatus = 'active' | 'blocked' | 'done';
+export type TaskPriority = 'high' | 'medium' | 'low';
 
 export interface Task {
   id: number;
   title: string;
   status: TaskStatus;
+  priority: TaskPriority;
   blockedReason?: string;
   gitBranch?: string;
   createdAt: string;
