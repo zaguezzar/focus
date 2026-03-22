@@ -19,8 +19,8 @@ const COLORS = {
   lowFg: '#565f89',
 };
 
-type ViewFilter = 'all' | 'active' | 'blocked' | 'done';
-const FILTERS: ViewFilter[] = ['all', 'active', 'blocked', 'done'];
+type ViewFilter = 'all' | 'active' | 'blocked' | 'done' | 'archive';
+const FILTERS: ViewFilter[] = ['all', 'active', 'blocked', 'done', 'archive'];
 
 export function launchUI(): void {
   let db = store.load();
@@ -177,6 +177,8 @@ export function launchUI(): void {
     const filterTabs = FILTERS.map(f => {
       const count = f === 'all'
         ? db.tasks.filter(t => t.status !== 'done').length
+        : f === 'archive'
+        ? db.tasks.filter(t => t.status === 'done').length
         : db.tasks.filter(t => t.status === f).length;
       if (f === currentFilter) {
         return `{${COLORS.accent}-fg}{bold} [${f.toUpperCase()}] (${count}) {/bold}{/}`;
@@ -628,6 +630,7 @@ export function launchUI(): void {
   screen.key(['2'], () => { currentFilter = 'active'; selectedIndex = 0; render(); });
   screen.key(['3'], () => { currentFilter = 'blocked'; selectedIndex = 0; render(); });
   screen.key(['4'], () => { currentFilter = 'done'; selectedIndex = 0; render(); });
+  screen.key(['5'], () => { currentFilter = 'archive'; selectedIndex = 0; render(); });
 
   // Home / End
   screen.key(['home'], () => { selectedIndex = 0; render(); });

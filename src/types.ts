@@ -30,7 +30,7 @@ export interface SessionContext {
   lastActiveTaskId: number | null;
   lastOpenedAt: string;
   selectedIndex: number;
-  viewFilter: 'all' | 'active' | 'blocked' | 'done';
+  viewFilter: 'all' | 'active' | 'blocked' | 'done' | 'archive';
   timer: TimerState;
   focusStartedAt: string | null; // when the user started focusing on a task
 }
