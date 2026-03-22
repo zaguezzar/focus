@@ -21,6 +21,7 @@ const COLORS = {
 
 type ViewFilter = 'all' | 'active' | 'blocked' | 'done' | 'archive';
 const FILTERS: ViewFilter[] = ['all', 'active', 'blocked', 'done', 'archive'];
+type PanelView = 'details' | 'timer';
 
 export function launchUI(): void {
   let db = store.load();
@@ -29,6 +30,7 @@ export function launchUI(): void {
   let tasks = store.getFilteredTasks(db, currentFilter);
   let searchQuery = '';
   let isSearching = false;
+  let panelView: PanelView = 'details';
   const lastActiveId = db.session.lastActiveTaskId;
   const lastOpenedAt = db.session.lastOpenedAt;
 
@@ -126,6 +128,9 @@ export function launchUI(): void {
       fg: COLORS.fg,
     },
     tags: true,
+    scrollable: true,
+    mouse: true,
+    keys: true,
     label: ' Details ',
   });
 
@@ -201,13 +206,40 @@ export function launchUI(): void {
     }
   }
 
+  function buildTaskList(filtered: import('./types.js').Task[]): import('./types.js').Task[] {
+    const filteredIds = new Set(filtered.map(t => t.id));
+    // Top-level tasks that matched the filter
+    const topLevel = filtered.filter(t => !t.parentId);
+    // Subtasks that matched the filter but whose parent didn't
+    const orphanSubs = filtered.filter(t => t.parentId && !topLevel.some(p => (p.subtasks ?? []).includes(t.id)));
+
+    const result: import('./types.js').Task[] = [];
+    for (const task of topLevel) {
+      result.push(task);
+      // Show subtasks that match the current filter under their parent
+      const subs = (task.subtasks ?? [])
+        .map(id => db.tasks.find(t => t.id === id))
+        .filter(Boolean) as import('./types.js').Task[];
+      for (const sub of subs) {
+        if (filteredIds.has(sub.id)) result.push(sub);
+      }
+    }
+    // Append orphan subtasks (parent not in this filter) so they're still visible
+    for (const sub of orphanSubs) {
+      result.push(sub);
+    }
+    return result;
+  }
+
   function renderTasks(): void {
     let filtered = store.getFilteredTasks(db, currentFilter);
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(t => t.title.toLowerCase().includes(q) || `#${t.id}` === q);
+      tasks = filtered;
+    } else {
+      tasks = buildTaskList(filtered);
     }
-    tasks = filtered;
     if (selectedIndex >= tasks.length) selectedIndex = Math.max(0, tasks.length - 1);
     taskList.setLabel(searchQuery ? ` Tasks {${COLORS.accent}-fg}/${searchQuery}{/} ` : ' Tasks ');
 
@@ -231,8 +263,8 @@ export function launchUI(): void {
         ? ` {${COLORS.blockedFg}-fg}(${task.blockedReason}){/}`
         : '';
       const isFocused = task.id === lastActiveId;
-      const focusMarker = isFocused ? `{${COLORS.accent}-fg}\u25C6{/}` : ' ';
-      const indent = task.parentId ? '  ' : '';
+      const focusMarker = isFocused ? `{${COLORS.accent}-fg}\u25C6{/} ` : '  ';
+      const indent = task.parentId ? '    ' : '';
       const cursor = selected ? '{bold}>{/bold}' : ' ';
       return `${prefix} ${cursor}${focusMarker}${indent}${icon} ${prio} ${id} ${task.title}${tags}${branchTag}${blocked} ${suffix}`;
     });
@@ -240,31 +272,51 @@ export function launchUI(): void {
     taskList.setContent('\n' + lines.join('\n'));
   }
 
+  function row(label: string, value: string): string {
+    const pad = 10 - label.length;
+    return `{${COLORS.dimFg}-fg}${label}{/}${' '.repeat(Math.max(1, pad))}${value}`;
+  }
+
   function renderDetail(): void {
+    if (panelView === 'timer') {
+      renderTimerPanel();
+      return;
+    }
+
     if (tasks.length === 0 || selectedIndex >= tasks.length) {
+      detailPanel.setLabel(' Details ');
       detailPanel.setContent(`{${COLORS.dimFg}-fg}No task selected{/}`);
       return;
     }
 
-    const task = tasks[selectedIndex];
+    // Re-fetch the task from current db to ensure notes/tags are fresh
+    const taskId = tasks[selectedIndex].id;
+    const task = db.tasks.find(t => t.id === taskId) ?? tasks[selectedIndex];
     const isFocused = task.id === lastActiveId;
     const lines: string[] = [];
+
+    detailPanel.setLabel(' Details ');
+
     if (isFocused && lastOpenedAt) {
-      lines.push(`{${COLORS.accent}-fg}\u25C6 Last focused{/}`);
-      lines.push(`{${COLORS.dimFg}-fg}  ${formatDate(lastOpenedAt)}{/}`);
+      lines.push(`{${COLORS.accent}-fg}Last focused{/}`);
+      lines.push(`{${COLORS.dimFg}-fg}${formatDate(lastOpenedAt)}{/}`);
       lines.push('');
     }
+
     lines.push(`{bold}${task.title}{/bold}`);
     lines.push('');
-    lines.push(`{${COLORS.dimFg}-fg}ID:{/}      #${task.id}`);
-    lines.push(`{${COLORS.dimFg}-fg}Status:{/}  ${statusIcon(task.status)} ${task.status}`);
-    lines.push(`{${COLORS.dimFg}-fg}Priority:{/}${priorityTag(task.priority ?? 'medium')} ${task.priority ?? 'medium'}`);
+    lines.push(row('ID:', `#${task.id}`));
+    const statusColor = task.status === 'active' ? COLORS.activeFg : task.status === 'blocked' ? COLORS.blockedFg : COLORS.doneFg;
+    lines.push(row('Status:', `{${statusColor}-fg}${task.status}{/}`));
+    const prio = task.priority ?? 'medium';
+    const prioColor = prio === 'high' ? COLORS.highFg : prio === 'medium' ? COLORS.mediumFg : COLORS.lowFg;
+    lines.push(row('Priority:', `{${prioColor}-fg}${prio}{/}`));
     if ((task.tags ?? []).length > 0) {
-      lines.push(`{${COLORS.dimFg}-fg}Tags:{/}    {${COLORS.mediumFg}-fg}${task.tags.map(t => '#' + t).join(' ')}{/}`);
+      lines.push(row('Tags:', `{${COLORS.mediumFg}-fg}${task.tags.map(t => '#' + t).join(' ')}{/}`));
     }
 
     if (task.blockedReason) {
-      lines.push(`{${COLORS.dimFg}-fg}Reason:{/}  {${COLORS.blockedFg}-fg}${task.blockedReason}{/}`);
+      lines.push(row('Reason:', `{${COLORS.blockedFg}-fg}${task.blockedReason}{/}`));
     }
     if (task.gitBranch) {
       let branchInfo = task.gitBranch;
@@ -276,14 +328,15 @@ export function launchUI(): void {
         if (status.dirty) parts.push(`{${COLORS.mediumFg}-fg}*{/}`);
         if (parts.length > 0) branchInfo += ' ' + parts.join(' ');
       }
-      lines.push(`{${COLORS.dimFg}-fg}Branch:{/}  ${branchInfo}`);
+      lines.push(row('Branch:', branchInfo));
     }
 
     const spent = task.timeSpent ?? 0;
     if (spent > 0) {
-      lines.push(`{${COLORS.dimFg}-fg}Time:{/}    ${formatDuration(spent)}`);
+      lines.push(row('Time:', formatDuration(spent)));
     }
 
+    // Subtasks
     const subs = (task.subtasks ?? []).map(id => db.tasks.find(t => t.id === id)).filter(Boolean) as import('./types.js').Task[];
     if (subs.length > 0) {
       const done = subs.filter(s => s.status === 'done').length;
@@ -296,6 +349,7 @@ export function launchUI(): void {
       });
     }
 
+    // Notes
     const notes = task.notes ?? [];
     if (notes.length > 0) {
       lines.push('');
@@ -303,13 +357,16 @@ export function launchUI(): void {
       notes.forEach(n => lines.push(`{${COLORS.dimFg}-fg}\u2022{/} ${n}`));
     }
 
+    // Dates - show both relative and absolute
     lines.push('');
-    lines.push(`{${COLORS.dimFg}-fg}Created:{/} ${formatDate(task.createdAt)}`);
-    lines.push(`{${COLORS.dimFg}-fg}Updated:{/} ${formatDate(task.updatedAt)}`);
+    lines.push(row('Created:', `${formatDate(task.createdAt)}`));
+    lines.push(`          {${COLORS.dimFg}-fg}${absDate(task.createdAt)}{/}`);
+    lines.push(row('Updated:', `${formatDate(task.updatedAt)}`));
     if (task.doneAt) {
-      lines.push(`{${COLORS.dimFg}-fg}Done:{/}    ${formatDate(task.doneAt)}`);
+      lines.push(row('Done:', `${formatDate(task.doneAt)}`));
     }
 
+    // Actions
     lines.push('');
     lines.push(`{${COLORS.dimFg}-fg}--- Actions ---{/}`);
     if (task.status === 'active') {
@@ -319,13 +376,76 @@ export function launchUI(): void {
     } else if (task.status === 'done') {
       lines.push(`{${COLORS.activeFg}-fg}[r]{/} reactivate`);
     }
-    lines.push(`{${COLORS.accent}-fg}[s]{/} subtask`);
-    lines.push(`{${COLORS.accent}-fg}[#]{/} tag`);
-    lines.push(`{${COLORS.accent}-fg}[n]{/} add note`);
-    lines.push(`{${COLORS.accent}-fg}[p]{/} priority`);
-    lines.push(`{${COLORS.accent}-fg}[c]{/} new branch`);
-    lines.push(`{${COLORS.accent}-fg}[g]{/} link branch`);
+    lines.push(`{${COLORS.accent}-fg}[s]{/} subtask  {${COLORS.accent}-fg}[#]{/} tag`);
+    lines.push(`{${COLORS.accent}-fg}[n]{/} note   {${COLORS.accent}-fg}[p]{/} priority`);
+    lines.push(`{${COLORS.accent}-fg}[c]{/} branch   {${COLORS.accent}-fg}[g]{/} link`);
     lines.push(`{${COLORS.blockedFg}-fg}[x]{/} delete`);
+
+    detailPanel.setContent(lines.join('\n'));
+  }
+
+  function renderTimerPanel(): void {
+    detailPanel.setLabel(` {${COLORS.accent}-fg}Timer{/} `);
+
+    const total = timer.duration * 60;
+    const elapsed = getTimerSeconds();
+    const remaining = Math.max(0, total - elapsed);
+    const m = Math.floor(remaining / 60);
+    const s = remaining % 60;
+    const timeStr = `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+
+    const progress = total > 0 ? Math.min(1, elapsed / total) : 0;
+    const barWidth = 24;
+    const filled = Math.round(progress * barWidth);
+    const empty = barWidth - filled;
+    const bar = `{${COLORS.doneFg}-fg}${'█'.repeat(filled)}{/}{${COLORS.dimFg}-fg}${'░'.repeat(empty)}{/}`;
+
+    const pct = Math.round(progress * 100);
+    const lines: string[] = [];
+
+    // Timer status
+    let statusText: string;
+    if (remaining === 0 && (timer.startedAt || timer.paused)) {
+      statusText = `{${COLORS.highFg}-fg}{bold}DONE!{/bold}{/}`;
+    } else if (timer.paused) {
+      statusText = `{${COLORS.mediumFg}-fg}PAUSED{/}`;
+    } else if (timer.startedAt) {
+      statusText = `{${COLORS.doneFg}-fg}RUNNING{/}`;
+    } else {
+      statusText = `{${COLORS.dimFg}-fg}READY{/}`;
+    }
+
+    lines.push('');
+    lines.push(`  ${statusText}`);
+    lines.push('');
+    lines.push(`      {bold}${timeStr}{/bold}`);
+    lines.push('');
+    lines.push(` ${bar}`);
+    lines.push(`          {${COLORS.dimFg}-fg}${pct}%{/}`);
+    lines.push('');
+    lines.push(row('Duration:', `${timer.duration}min`));
+
+    // Show linked task
+    if (timer.taskId) {
+      const t = db.tasks.find(tk => tk.id === timer.taskId);
+      if (t) {
+        lines.push(row('Task:', `#${t.id} ${t.title}`));
+      }
+    }
+
+    lines.push('');
+    lines.push(`{${COLORS.dimFg}-fg}--- Controls ---{/}`);
+    if (!timer.startedAt && !timer.paused) {
+      lines.push(`{${COLORS.doneFg}-fg}[t]{/} start`);
+    } else if (timer.paused) {
+      lines.push(`{${COLORS.doneFg}-fg}[t]{/} resume`);
+    } else {
+      lines.push(`{${COLORS.mediumFg}-fg}[t]{/} pause`);
+    }
+    lines.push(`{${COLORS.blockedFg}-fg}[T]{/} reset`);
+    lines.push(`{${COLORS.accent}-fg}[+]{/}/{${COLORS.accent}-fg}[-]{/} duration`);
+    lines.push('');
+    lines.push(`{${COLORS.dimFg}-fg}[w]{/} back to details`);
 
     detailPanel.setContent(lines.join('\n'));
   }
@@ -333,19 +453,22 @@ export function launchUI(): void {
   function renderStatusBar(): void {
     const key = (k: string, label: string) =>
       `{${COLORS.accent}-fg}[${k}]{/} {${COLORS.fg}-fg}${label}{/}`;
-    const keys = [
-      key('j/k', 'navigate'),
+    const row1 = [
+      key('j/k', 'nav'),
       key('Tab', 'filter'),
       key('a', 'add'),
       key('d', 'done'),
       key('b', 'block'),
       key('e', 'edit'),
+      key('/', 'search'),
+      key('t', 'timer'),
+      key('w', 'timer tab'),
       key('q', 'quit'),
     ].join('  ');
     const activeCount = db.tasks.filter(t => t.status === 'active').length;
     const blockedCount = db.tasks.filter(t => t.status === 'blocked').length;
     const taskCount = `{${COLORS.activeFg}-fg}${activeCount} active{/} {${COLORS.dimFg}-fg}/{/} {${COLORS.blockedFg}-fg}${blockedCount} blocked{/}`;
-    statusBar.setContent(` ${keys}\n ${taskCount}`);
+    statusBar.setContent(` ${row1}\n ${taskCount}`);
   }
 
   function render(): void {
@@ -679,6 +802,30 @@ export function launchUI(): void {
     }
   });
 
+  // Toggle panel view
+  screen.key(['w'], () => {
+    if (inputBox.hidden === false) return;
+    panelView = panelView === 'details' ? 'timer' : 'details';
+    render();
+  });
+
+  // Timer duration adjust
+  screen.key(['+', '='], () => {
+    if (inputBox.hidden === false) return;
+    timer.duration = Math.min(120, timer.duration + 5);
+    db.session.timer = timer;
+    store.save(db);
+    render();
+  });
+
+  screen.key(['-'], () => {
+    if (inputBox.hidden === false) return;
+    timer.duration = Math.max(5, timer.duration - 5);
+    db.session.timer = timer;
+    store.save(db);
+    render();
+  });
+
   // Timer: t to start/pause, T to reset
   screen.key(['t'], () => {
     if (inputBox.hidden === false) return;
@@ -715,6 +862,7 @@ export function launchUI(): void {
   timerInterval = setInterval(() => {
     if (timer.startedAt && !timer.paused) {
       renderHeader();
+      if (panelView === 'timer') renderTimerPanel();
       screen.render();
     }
   }, 1000);
@@ -743,4 +891,13 @@ function formatDate(iso: string): string {
   if (hours < 24) return `${hours}h ago`;
   if (days < 7) return `${days}d ago`;
   return d.toLocaleDateString();
+}
+
+function absDate(iso: string): string {
+  const d = new Date(iso);
+  const month = d.toLocaleString('en', { month: 'short' });
+  const day = d.getDate();
+  const hours = String(d.getHours()).padStart(2, '0');
+  const mins = String(d.getMinutes()).padStart(2, '0');
+  return `${month} ${day}, ${hours}:${mins}`;
 }
