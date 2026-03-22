@@ -1,0 +1,22 @@
+{
+  "name": "focus-cli",
+  "version": "1.0.0",
+  "description": "Context-aware task brain for solo engineers",
+  "type": "module",
+  "bin": {
+    "focus": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "blessed": "^0.1.81"
+  },
+  "devDependencies": {
+    "@types/blessed": "^0.1.25",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
