@@ -222,13 +222,16 @@ export function launchUI(): void {
       const prio = priorityTag(task.priority ?? 'medium');
       const id = `{${COLORS.dimFg}-fg}#${task.id}{/}`;
       const branchTag = task.gitBranch ? ` {${COLORS.dimFg}-fg}[${task.gitBranch}]{/}` : '';
+      const tags = (task.tags ?? []).length > 0
+        ? ` {${COLORS.mediumFg}-fg}${task.tags.map(t => '#' + t).join(' ')}{/}`
+        : '';
       const blocked = task.status === 'blocked' && task.blockedReason
         ? ` {${COLORS.blockedFg}-fg}(${task.blockedReason}){/}`
         : '';
       const isFocused = task.id === lastActiveId;
       const focusMarker = isFocused ? `{${COLORS.accent}-fg}\u25C6{/}` : ' ';
       const cursor = selected ? '{bold}>{/bold}' : ' ';
-      return `${prefix} ${cursor}${focusMarker}${icon} ${prio} ${id} ${task.title}${branchTag}${blocked} ${suffix}`;
+      return `${prefix} ${cursor}${focusMarker}${icon} ${prio} ${id} ${task.title}${tags}${branchTag}${blocked} ${suffix}`;
     });
 
     taskList.setContent('\n' + lines.join('\n'));
@@ -253,6 +256,9 @@ export function launchUI(): void {
     lines.push(`{${COLORS.dimFg}-fg}ID:{/}      #${task.id}`);
     lines.push(`{${COLORS.dimFg}-fg}Status:{/}  ${statusIcon(task.status)} ${task.status}`);
     lines.push(`{${COLORS.dimFg}-fg}Priority:{/}${priorityTag(task.priority ?? 'medium')} ${task.priority ?? 'medium'}`);
+    if ((task.tags ?? []).length > 0) {
+      lines.push(`{${COLORS.dimFg}-fg}Tags:{/}    {${COLORS.mediumFg}-fg}${task.tags.map(t => '#' + t).join(' ')}{/}`);
+    }
 
     if (task.blockedReason) {
       lines.push(`{${COLORS.dimFg}-fg}Reason:{/}  {${COLORS.blockedFg}-fg}${task.blockedReason}{/}`);
@@ -298,6 +304,7 @@ export function launchUI(): void {
     } else if (task.status === 'done') {
       lines.push(`{${COLORS.activeFg}-fg}[r]{/} reactivate`);
     }
+    lines.push(`{${COLORS.accent}-fg}[#]{/} tag`);
     lines.push(`{${COLORS.accent}-fg}[n]{/} add note`);
     lines.push(`{${COLORS.accent}-fg}[p]{/} priority`);
     lines.push(`{${COLORS.accent}-fg}[c]{/} new branch`);
@@ -495,6 +502,26 @@ export function launchUI(): void {
     store.setStatus(db, task.id, 'active');
     db = store.load();
     render();
+  });
+
+  // Add/remove tag
+  screen.key(['#'], () => {
+    if (inputBox.hidden === false) return;
+    if (tasks.length === 0) return;
+    const task = tasks[selectedIndex];
+    promptInput('Tag (prefix - to remove)', (value) => {
+      if (!task.tags) task.tags = [];
+      if (value.startsWith('-')) {
+        const tag = value.slice(1).trim();
+        task.tags = task.tags.filter(t => t !== tag);
+      } else {
+        const tag = value.replace(/^#/, '').trim();
+        if (tag && !task.tags.includes(tag)) task.tags.push(tag);
+      }
+      task.updatedAt = new Date().toISOString();
+      store.save(db);
+      db = store.load();
+    });
   });
 
   // Add note
