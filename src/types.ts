@@ -8,6 +8,7 @@ export interface Task {
   priority: TaskPriority;
   blockedReason?: string;
   gitBranch?: string;
+  timeSpent: number; // total seconds spent working on this task
   createdAt: string;
   updatedAt: string;
   doneAt?: string;
@@ -27,6 +28,7 @@ export interface SessionContext {
   selectedIndex: number;
   viewFilter: 'all' | 'active' | 'blocked' | 'done';
   timer: TimerState;
+  focusStartedAt: string | null; // when the user started focusing on a task
 }
 
 export interface FocusDB {
