@@ -1,5 +1,5 @@
 import blessed from 'blessed';
-import type { FocusDB, Task } from './types.js';
+import type { FocusDB, Task, TaskPriority } from './types.js';
 import * as store from './store.js';
 
 const COLORS = {
@@ -14,6 +14,9 @@ const COLORS = {
   accent: '#bb9af7',
   dimFg: '#565f89',
   inputBg: '#1f2335',
+  highFg: '#f7768e',
+  mediumFg: '#e0af68',
+  lowFg: '#565f89',
 };
 
 type ViewFilter = 'all' | 'active' | 'blocked' | 'done';
@@ -139,6 +142,14 @@ export function launchUI(): void {
     header.setContent(`\n {${COLORS.accent}-fg}{bold}FOCUS{/bold}{/}  ${filterTabs}${'  '.repeat(3)}${branchStr}`);
   }
 
+  function priorityTag(priority: TaskPriority): string {
+    switch (priority) {
+      case 'high': return `{${COLORS.highFg}-fg}!!{/}`;
+      case 'medium': return `{${COLORS.mediumFg}-fg}!{/} `;
+      case 'low': return `{${COLORS.lowFg}-fg}\u2022{/} `;
+    }
+  }
+
   function renderTasks(): void {
     tasks = store.getFilteredTasks(db, currentFilter);
     if (selectedIndex >= tasks.length) selectedIndex = Math.max(0, tasks.length - 1);
@@ -153,13 +164,14 @@ export function launchUI(): void {
       const prefix = selected ? `{${COLORS.selectedBg}-bg}` : '';
       const suffix = selected ? '{/}' : '';
       const icon = statusIcon(task.status);
+      const prio = priorityTag(task.priority ?? 'medium');
       const id = `{${COLORS.dimFg}-fg}#${task.id}{/}`;
       const branchTag = task.gitBranch ? ` {${COLORS.dimFg}-fg}[${task.gitBranch}]{/}` : '';
       const blocked = task.status === 'blocked' && task.blockedReason
         ? ` {${COLORS.blockedFg}-fg}(${task.blockedReason}){/}`
         : '';
       const cursor = selected ? '{bold}>{/bold}' : ' ';
-      return `${prefix} ${cursor} ${icon} ${id} ${task.title}${branchTag}${blocked} ${suffix}`;
+      return `${prefix} ${cursor} ${icon} ${prio} ${id} ${task.title}${branchTag}${blocked} ${suffix}`;
     });
 
     taskList.setContent('\n' + lines.join('\n'));
@@ -177,6 +189,7 @@ export function launchUI(): void {
       '',
       `{${COLORS.dimFg}-fg}ID:{/}      #${task.id}`,
       `{${COLORS.dimFg}-fg}Status:{/}  ${statusIcon(task.status)} ${task.status}`,
+      `{${COLORS.dimFg}-fg}Priority:{/}${priorityTag(task.priority ?? 'medium')} ${task.priority ?? 'medium'}`,
     ];
 
     if (task.blockedReason) {
@@ -202,6 +215,7 @@ export function launchUI(): void {
     } else if (task.status === 'done') {
       lines.push(`{${COLORS.activeFg}-fg}[r]{/} reactivate`);
     }
+    lines.push(`{${COLORS.accent}-fg}[p]{/} priority`);
     lines.push(`{${COLORS.accent}-fg}[g]{/} link branch`);
     lines.push(`{${COLORS.blockedFg}-fg}[x]{/} delete`);
 
@@ -372,6 +386,19 @@ export function launchUI(): void {
       store.save(db);
       db = store.load();
     });
+  });
+
+  // Cycle priority
+  screen.key(['p'], () => {
+    if (inputBox.hidden === false) return;
+    if (tasks.length === 0) return;
+    const task = tasks[selectedIndex];
+    const cycle: TaskPriority[] = ['low', 'medium', 'high'];
+    const idx = cycle.indexOf(task.priority ?? 'medium');
+    const next = cycle[(idx + 1) % cycle.length];
+    store.setPriority(db, task.id, next);
+    db = store.load();
+    render();
   });
 
   // Delete task

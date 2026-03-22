@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import type { FocusDB, Task, TaskStatus } from './types.js';
+import type { FocusDB, Task, TaskStatus, TaskPriority } from './types.js';
 
 const FOCUS_DIR = path.join(os.homedir(), '.focus');
 const DB_PATH = path.join(FOCUS_DIR, 'db.json');
@@ -41,12 +41,13 @@ export function save(db: FocusDB): void {
   fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf-8');
 }
 
-export function addTask(db: FocusDB, title: string): Task {
+export function addTask(db: FocusDB, title: string, priority: TaskPriority = 'medium'): Task {
   const now = new Date().toISOString();
   const task: Task = {
     id: db.nextId++,
     title,
     status: 'active',
+    priority,
     createdAt: now,
     updatedAt: now,
   };
@@ -90,11 +91,22 @@ export function linkBranch(db: FocusDB, id: number, branch: string): Task | null
   return task;
 }
 
+export function setPriority(db: FocusDB, id: number, priority: TaskPriority): Task | null {
+  const task = db.tasks.find(t => t.id === id);
+  if (!task) return null;
+  task.priority = priority;
+  task.updatedAt = new Date().toISOString();
+  save(db);
+  return task;
+}
+
+const PRIORITY_ORDER: Record<TaskPriority, number> = { high: 0, medium: 1, low: 2 };
+
 export function getFilteredTasks(db: FocusDB, filter: 'all' | 'active' | 'blocked' | 'done'): Task[] {
-  if (filter === 'all') {
-    return db.tasks.filter(t => t.status !== 'done');
-  }
-  return db.tasks.filter(t => t.status === filter);
+  const filtered = filter === 'all'
+    ? db.tasks.filter(t => t.status !== 'done')
+    : db.tasks.filter(t => t.status === filter);
+  return filtered.sort((a, b) => PRIORITY_ORDER[a.priority ?? 'medium'] - PRIORITY_ORDER[b.priority ?? 'medium']);
 }
 
 export function getCurrentBranch(): string | null {
