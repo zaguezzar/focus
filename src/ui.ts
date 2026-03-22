@@ -230,8 +230,9 @@ export function launchUI(): void {
         : '';
       const isFocused = task.id === lastActiveId;
       const focusMarker = isFocused ? `{${COLORS.accent}-fg}\u25C6{/}` : ' ';
+      const indent = task.parentId ? '  ' : '';
       const cursor = selected ? '{bold}>{/bold}' : ' ';
-      return `${prefix} ${cursor}${focusMarker}${icon} ${prio} ${id} ${task.title}${tags}${branchTag}${blocked} ${suffix}`;
+      return `${prefix} ${cursor}${focusMarker}${indent}${icon} ${prio} ${id} ${task.title}${tags}${branchTag}${blocked} ${suffix}`;
     });
 
     taskList.setContent('\n' + lines.join('\n'));
@@ -281,6 +282,18 @@ export function launchUI(): void {
       lines.push(`{${COLORS.dimFg}-fg}Time:{/}    ${formatDuration(spent)}`);
     }
 
+    const subs = (task.subtasks ?? []).map(id => db.tasks.find(t => t.id === id)).filter(Boolean) as import('./types.js').Task[];
+    if (subs.length > 0) {
+      const done = subs.filter(s => s.status === 'done').length;
+      const pct = Math.round((done / subs.length) * 100);
+      lines.push('');
+      lines.push(`{${COLORS.dimFg}-fg}--- Subtasks (${pct}%) ---{/}`);
+      subs.forEach(s => {
+        const icon = statusIcon(s.status);
+        lines.push(` ${icon} ${s.title}`);
+      });
+    }
+
     const notes = task.notes ?? [];
     if (notes.length > 0) {
       lines.push('');
@@ -304,6 +317,7 @@ export function launchUI(): void {
     } else if (task.status === 'done') {
       lines.push(`{${COLORS.activeFg}-fg}[r]{/} reactivate`);
     }
+    lines.push(`{${COLORS.accent}-fg}[s]{/} subtask`);
     lines.push(`{${COLORS.accent}-fg}[#]{/} tag`);
     lines.push(`{${COLORS.accent}-fg}[n]{/} add note`);
     lines.push(`{${COLORS.accent}-fg}[p]{/} priority`);
@@ -502,6 +516,17 @@ export function launchUI(): void {
     store.setStatus(db, task.id, 'active');
     db = store.load();
     render();
+  });
+
+  // Add subtask
+  screen.key(['s'], () => {
+    if (inputBox.hidden === false) return;
+    if (tasks.length === 0) return;
+    const task = tasks[selectedIndex];
+    promptInput('Subtask', (value) => {
+      store.addSubtask(db, task.id, value);
+      db = store.load();
+    });
   });
 
   // Add/remove tag
