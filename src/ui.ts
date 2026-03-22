@@ -94,6 +94,7 @@ export function launchUI(): void {
     style: { bg: COLORS.headerBg, fg: COLORS.fg },
     content: '',
     tags: true,
+    mouse: true,
   });
 
   // Task list
@@ -727,18 +728,80 @@ export function launchUI(): void {
     });
   });
 
-  // Mouse support for task list
-  taskList.on('click', function (_data: any) {
-    // The click coordinates relative to the task list
-    // Each task line is offset by 1 (the leading newline)
-    const y = (screen as any).program?.y;
-    if (y !== undefined) {
-      const relativeY = y - Number(taskList.atop || 0) - 1; // subtract border
-      const clickedIndex = relativeY - 1; // subtract the leading newline
+  // Mouse: click task list to select
+  let lastClickTime = 0;
+  let lastClickIndex = -1;
+  taskList.on('mouse', (data: any) => {
+    if (data.action === 'mousedown') {
+      // data.y is absolute screen coordinate; taskList.atop is the box's top
+      const relY = data.y - Number(taskList.atop || 0) - 1; // subtract border
+      const clickedIndex = relY - 1; // subtract the leading newline
       if (clickedIndex >= 0 && clickedIndex < tasks.length) {
-        selectedIndex = clickedIndex;
+        const now = Date.now();
+        // Double-click to focus
+        if (clickedIndex === lastClickIndex && now - lastClickTime < 400) {
+          selectedIndex = clickedIndex;
+          flushFocusTime();
+          const task = tasks[selectedIndex];
+          db.session.lastActiveTaskId = task.id;
+          db.session.focusStartedAt = new Date().toISOString();
+          store.save(db);
+        } else {
+          selectedIndex = clickedIndex;
+        }
+        lastClickTime = now;
+        lastClickIndex = clickedIndex;
         render();
       }
+    } else if (data.action === 'wheeldown') {
+      if (selectedIndex < tasks.length - 1) {
+        selectedIndex++;
+        render();
+      }
+    } else if (data.action === 'wheelup') {
+      if (selectedIndex > 0) {
+        selectedIndex--;
+        render();
+      }
+    }
+  });
+
+  // Mouse: click header tabs to switch filter
+  header.on('click', (data: any) => {
+    // Figure out which filter was clicked based on x position
+    // Header content: "FOCUS  [ALL] (n)  active (n)  blocked (n)  done (n)  archive (n)  ..."
+    // We use a simple approach: measure cumulative text widths
+    const x = data.x;
+    // "FOCUS" = ~7 chars offset
+    let pos = 8;
+    for (const f of FILTERS) {
+      const label = f === currentFilter
+        ? ` [${f.toUpperCase()}] `
+        : ` ${f} `;
+      // count for filter label + count digits + parens + spacing
+      const count = f === 'all'
+        ? db.tasks.filter(t => t.status !== 'done').length
+        : f === 'archive'
+        ? db.tasks.filter(t => t.status === 'done').length
+        : db.tasks.filter(t => t.status === f).length;
+      const segment = `${label}(${count})  `;
+      const segLen = segment.length;
+      if (x >= pos && x < pos + segLen) {
+        currentFilter = f;
+        selectedIndex = 0;
+        render();
+        return;
+      }
+      pos += segLen;
+    }
+  });
+
+  // Mouse: click detail panel to toggle timer view
+  detailPanel.on('click', (_data: any) => {
+    // Only toggle if clicking the label area (top border)
+    if (_data.y === Number(detailPanel.atop || 0)) {
+      panelView = panelView === 'details' ? 'timer' : 'details';
+      render();
     }
   });
 
