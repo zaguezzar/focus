@@ -46,7 +46,7 @@ export function save(db: FocusDB): void {
 export function addTask(db: FocusDB, title: string, priority: TaskPriority = 'medium'): Task {
   const now = new Date().toISOString();
   const task: Task = {
-    id: db.nextId++,
+    id: db.tasks.length > 0 ? Math.max(...db.tasks.map(t => t.id)) + 1 : 1,
     title,
     status: 'active',
     priority,
