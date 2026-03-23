@@ -501,6 +501,10 @@ export function launchUI(): void {
   }
 
   function promptInput(label: string, callback: (value: string) => void): void {
+    // Remove any stale listeners from previous prompts
+    inputBox.removeAllListeners('submit');
+    inputBox.removeAllListeners('cancel');
+
     inputBox.setLabel(` ${label} `);
     inputBox.setValue('');
     inputBox.hidden = false;
