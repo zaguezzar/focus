@@ -210,25 +210,30 @@ export function launchUI(): void {
 
   function buildTaskList(filtered: import('./types.js').Task[]): import('./types.js').Task[] {
     const filteredIds = new Set(filtered.map(t => t.id));
-    // Top-level tasks that matched the filter
+    const seen = new Set<number>();
     const topLevel = filtered.filter(t => !t.parentId);
-    // Subtasks that matched the filter but whose parent didn't
-    const orphanSubs = filtered.filter(t => t.parentId && !topLevel.some(p => (p.subtasks ?? []).includes(t.id)));
 
     const result: import('./types.js').Task[] = [];
     for (const task of topLevel) {
       result.push(task);
-      // Show subtasks that match the current filter under their parent
-      const subs = (task.subtasks ?? [])
-        .map(id => db.tasks.find(t => t.id === id))
-        .filter(Boolean) as import('./types.js').Task[];
-      for (const sub of subs) {
-        if (filteredIds.has(sub.id)) result.push(sub);
+      seen.add(task.id);
+      // Deduplicate subtask IDs and skip missing tasks
+      const subIds = [...new Set(task.subtasks ?? [])];
+      for (const id of subIds) {
+        if (seen.has(id)) continue;
+        const sub = db.tasks.find(t => t.id === id);
+        if (sub && filteredIds.has(sub.id)) {
+          result.push(sub);
+          seen.add(sub.id);
+        }
       }
     }
-    // Append orphan subtasks (parent not in this filter) so they're still visible
-    for (const sub of orphanSubs) {
-      result.push(sub);
+    // Orphan subtasks (parent not in this filter)
+    for (const t of filtered) {
+      if (t.parentId && !seen.has(t.id)) {
+        result.push(t);
+        seen.add(t.id);
+      }
     }
     return result;
   }
@@ -338,8 +343,9 @@ export function launchUI(): void {
       lines.push(row('Time:', formatDuration(spent)));
     }
 
-    // Subtasks
-    const subs = (task.subtasks ?? []).map(id => db.tasks.find(t => t.id === id)).filter(Boolean) as import('./types.js').Task[];
+    // Subtasks (deduplicate IDs defensively)
+    const subIds = [...new Set(task.subtasks ?? [])];
+    const subs = subIds.map(id => db.tasks.find(t => t.id === id)).filter(Boolean) as import('./types.js').Task[];
     if (subs.length > 0) {
       const done = subs.filter(s => s.status === 'done').length;
       const pct = Math.round((done / subs.length) * 100);

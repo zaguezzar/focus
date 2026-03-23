@@ -36,6 +36,11 @@ export function load(): FocusDB {
   }
   const raw = fs.readFileSync(DB_PATH, 'utf-8');
   const db = JSON.parse(raw) as FocusDB;
+  // Self-heal: deduplicate subtask arrays and remove stale refs
+  const taskIds = new Set(db.tasks.map(t => t.id));
+  for (const t of db.tasks) {
+    if (t.subtasks) t.subtasks = [...new Set(t.subtasks)].filter(id => taskIds.has(id));
+  }
   // Always keep nextId in sync with actual tasks
   db.nextId = db.tasks.length > 0 ? Math.max(...db.tasks.map(t => t.id)) + 1 : 1;
   return db;
@@ -147,7 +152,7 @@ export function addSubtask(db: FocusDB, parentId: number, title: string): Task |
   const task = addTask(db, title);
   task.parentId = parentId;
   if (!parent.subtasks) parent.subtasks = [];
-  parent.subtasks.push(task.id);
+  if (!parent.subtasks.includes(task.id)) parent.subtasks.push(task.id);
   save(db);
   return task;
 }
