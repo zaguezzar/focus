@@ -21,7 +21,7 @@ const COLORS = {
 
 type ViewFilter = 'all' | 'active' | 'blocked' | 'done' | 'archive';
 const FILTERS: ViewFilter[] = ['all', 'active', 'blocked', 'done', 'archive'];
-type PanelView = 'details' | 'timer';
+type PanelView = 'details' | 'timer' | 'tags';
 
 export function launchUI(): void {
   let db = store.load();
@@ -31,6 +31,7 @@ export function launchUI(): void {
   let searchQuery = '';
   let isSearching = false;
   let panelView: PanelView = 'details';
+  let tagPickerIndex = 0;
   const lastActiveId = db.session.lastActiveTaskId;
   const lastOpenedAt = db.session.lastOpenedAt;
 
@@ -289,6 +290,10 @@ export function launchUI(): void {
       renderTimerPanel();
       return;
     }
+    if (panelView === 'tags') {
+      renderTagsPanel();
+      return;
+    }
 
     if (tasks.length === 0 || selectedIndex >= tasks.length) {
       detailPanel.setLabel(' Details ');
@@ -458,6 +463,61 @@ export function launchUI(): void {
     detailPanel.setContent(lines.join('\n'));
   }
 
+  function getAllTags(): string[] {
+    const tags = new Set<string>();
+    for (const t of db.tasks) {
+      for (const tag of (t.tags ?? [])) tags.add(tag);
+    }
+    return [...tags].sort();
+  }
+
+  function renderTagsPanel(): void {
+    if (tasks.length === 0 || selectedIndex >= tasks.length) {
+      detailPanel.setLabel(' Tags ');
+      detailPanel.setContent(`{${COLORS.dimFg}-fg}No task selected{/}`);
+      return;
+    }
+
+    const taskId = tasks[selectedIndex].id;
+    const task = db.tasks.find(t => t.id === taskId) ?? tasks[selectedIndex];
+    const allTags = getAllTags();
+    const taskTags = new Set(task.tags ?? []);
+
+    detailPanel.setLabel(` {${COLORS.mediumFg}-fg}Tags{/} {${COLORS.dimFg}-fg}#${task.id}{/} `);
+
+    const lines: string[] = [];
+    lines.push(`{bold}${task.title}{/bold}`);
+    lines.push('');
+
+    if (allTags.length === 0) {
+      lines.push(`{${COLORS.dimFg}-fg}No tags yet.{/}`);
+      lines.push(`{${COLORS.dimFg}-fg}Press {/}{${COLORS.accent}-fg}a{/}{${COLORS.dimFg}-fg} to create one.{/}`);
+    } else {
+      if (tagPickerIndex >= allTags.length) tagPickerIndex = Math.max(0, allTags.length - 1);
+      allTags.forEach((tag, i) => {
+        const selected = i === tagPickerIndex;
+        const active = taskTags.has(tag);
+        const check = active ? `{${COLORS.doneFg}-fg}\u2714{/}` : `{${COLORS.dimFg}-fg}\u2022{/}`;
+        const prefix = selected ? `{${COLORS.selectedBg}-bg}` : '';
+        const suffix = selected ? '{/}' : '';
+        const cursor = selected ? '{bold}>{/bold}' : ' ';
+        const tagColor = active ? COLORS.mediumFg : COLORS.dimFg;
+        lines.push(`${prefix} ${cursor} ${check} {${tagColor}-fg}#${tag}{/} ${suffix}`);
+      });
+    }
+
+    lines.push('');
+    lines.push(`{${COLORS.dimFg}-fg}--- Controls ---{/}`);
+    lines.push(`{${COLORS.accent}-fg}[j/k]{/} navigate`);
+    lines.push(`{${COLORS.accent}-fg}[Enter]{/} toggle tag`);
+    lines.push(`{${COLORS.accent}-fg}[a]{/} new tag`);
+    lines.push(`{${COLORS.accent}-fg}[e]{/} rename tag`);
+    lines.push(`{${COLORS.blockedFg}-fg}[x]{/} delete tag`);
+    lines.push(`{${COLORS.dimFg}-fg}[#/Esc]{/} close`);
+
+    detailPanel.setContent(lines.join('\n'));
+  }
+
   function renderStatusBar(): void {
     const key = (k: string, label: string) =>
       `{${COLORS.accent}-fg}[${k}]{/} {${COLORS.fg}-fg}${label}{/}`;
@@ -531,6 +591,11 @@ export function launchUI(): void {
 
   // Navigation
   screen.key(['j', 'down'], () => {
+    if (panelView === 'tags') {
+      const allTags = getAllTags();
+      if (tagPickerIndex < allTags.length - 1) { tagPickerIndex++; render(); }
+      return;
+    }
     if (selectedIndex < tasks.length - 1) {
       selectedIndex++;
       render();
@@ -538,6 +603,10 @@ export function launchUI(): void {
   });
 
   screen.key(['k', 'up'], () => {
+    if (panelView === 'tags') {
+      if (tagPickerIndex > 0) { tagPickerIndex--; render(); }
+      return;
+    }
     if (selectedIndex > 0) {
       selectedIndex--;
       render();
@@ -610,9 +679,25 @@ export function launchUI(): void {
     render();
   });
 
-  // Add task
+  // Add task (or new tag in tag picker)
   screen.key(['a'], () => {
     if (inputBox.hidden === false) return;
+    if (panelView === 'tags') {
+      if (tasks.length === 0) return;
+      const task = db.tasks.find(t => t.id === tasks[selectedIndex].id);
+      if (!task) return;
+      promptInput('New tag', (value) => {
+        const tag = value.replace(/^#/, '').trim();
+        if (!tag) return;
+        if (!task.tags) task.tags = [];
+        if (!task.tags.includes(tag)) task.tags.push(tag);
+        task.updatedAt = new Date().toISOString();
+        store.save(db);
+        db = store.load();
+        panelView = 'tags';
+      });
+      return;
+    }
     promptInput('New task', (value) => {
       store.addTask(db, value);
       db = store.load();
@@ -666,24 +751,17 @@ export function launchUI(): void {
     });
   });
 
-  // Add/remove tag
+  // Toggle tag picker panel
   screen.key(['#'], () => {
     if (inputBox.hidden === false) return;
     if (tasks.length === 0) return;
-    const task = tasks[selectedIndex];
-    promptInput('Tag (prefix - to remove)', (value) => {
-      if (!task.tags) task.tags = [];
-      if (value.startsWith('-')) {
-        const tag = value.slice(1).trim();
-        task.tags = task.tags.filter(t => t !== tag);
-      } else {
-        const tag = value.replace(/^#/, '').trim();
-        if (tag && !task.tags.includes(tag)) task.tags.push(tag);
-      }
-      task.updatedAt = new Date().toISOString();
-      store.save(db);
-      db = store.load();
-    });
+    if (panelView === 'tags') {
+      panelView = 'details';
+    } else {
+      panelView = 'tags';
+      tagPickerIndex = 0;
+    }
+    render();
   });
 
   // Add note
@@ -700,9 +778,26 @@ export function launchUI(): void {
     });
   });
 
-  // Edit task title
+  // Edit task title (or rename tag in tag picker)
   screen.key(['e'], () => {
     if (inputBox.hidden === false) return;
+    if (panelView === 'tags') {
+      const allTags = getAllTags();
+      if (allTags.length === 0) return;
+      const oldTag = allTags[tagPickerIndex];
+      promptInput(`Rename "${oldTag}" to`, (value) => {
+        const newTag = value.replace(/^#/, '').trim();
+        if (!newTag || newTag === oldTag) return;
+        // Rename across all tasks
+        for (const t of db.tasks) {
+          if (t.tags) t.tags = t.tags.map(tag => tag === oldTag ? newTag : tag);
+        }
+        store.save(db);
+        db = store.load();
+        panelView = 'tags';
+      });
+      return;
+    }
     if (tasks.length === 0) return;
     const task = tasks[selectedIndex];
     promptInput('Edit title', (value) => {
@@ -726,9 +821,25 @@ export function launchUI(): void {
     render();
   });
 
-  // Delete task (with confirmation)
+  // Delete task (or delete tag globally in tag picker)
   screen.key(['x'], () => {
     if (inputBox.hidden === false) return;
+    if (panelView === 'tags') {
+      const allTags = getAllTags();
+      if (allTags.length === 0) return;
+      const tag = allTags[tagPickerIndex];
+      promptInput(`Delete tag "${tag}" from all tasks? (y/n)`, (value) => {
+        if (value.toLowerCase() === 'y' || value.toLowerCase() === 'yes') {
+          for (const t of db.tasks) {
+            if (t.tags) t.tags = t.tags.filter(tg => tg !== tag);
+          }
+          store.save(db);
+          db = store.load();
+        }
+        panelView = 'tags';
+      });
+      return;
+    }
     if (tasks.length === 0) return;
     const task = tasks[selectedIndex];
     promptInput(`Delete "#${task.id} ${task.title}"? (y/n)`, (value) => {
@@ -808,10 +919,12 @@ export function launchUI(): void {
   });
 
   // Mouse: click detail panel to toggle timer view
+  const panelViews: PanelView[] = ['details', 'timer', 'tags'];
   detailPanel.on('click', (_data: any) => {
     // Only toggle if clicking the label area (top border)
     if (_data.y === Number(detailPanel.atop || 0)) {
-      panelView = panelView === 'details' ? 'timer' : 'details';
+      const idx = panelViews.indexOf(panelView);
+      panelView = panelViews[(idx + 1) % panelViews.length];
       render();
     }
   });
@@ -844,9 +957,27 @@ export function launchUI(): void {
     }
   }
 
-  // Enter to focus/select current task as "working on"
+  // Enter to focus/select current task (or toggle tag in picker)
   screen.key(['enter', 'return'], () => {
     if (inputBox.hidden === false) return;
+    if (panelView === 'tags') {
+      const allTags = getAllTags();
+      if (allTags.length === 0 || tasks.length === 0) return;
+      const tag = allTags[tagPickerIndex];
+      const task = db.tasks.find(t => t.id === tasks[selectedIndex].id);
+      if (!task) return;
+      if (!task.tags) task.tags = [];
+      if (task.tags.includes(tag)) {
+        task.tags = task.tags.filter(t => t !== tag);
+      } else {
+        task.tags.push(tag);
+      }
+      task.updatedAt = new Date().toISOString();
+      store.save(db);
+      db = store.load();
+      render();
+      return;
+    }
     if (tasks.length === 0) return;
     flushFocusTime();
     const task = tasks[selectedIndex];
@@ -869,6 +1000,11 @@ export function launchUI(): void {
 
   screen.key(['escape'], () => {
     if (inputBox.hidden === false) return;
+    if (panelView === 'tags') {
+      panelView = 'details';
+      render();
+      return;
+    }
     if (searchQuery) {
       searchQuery = '';
       selectedIndex = 0;
@@ -879,7 +1015,8 @@ export function launchUI(): void {
   // Toggle panel view
   screen.key(['w'], () => {
     if (inputBox.hidden === false) return;
-    panelView = panelView === 'details' ? 'timer' : 'details';
+    const idx = panelViews.indexOf(panelView);
+    panelView = panelViews[(idx + 1) % panelViews.length];
     render();
   });
 
