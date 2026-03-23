@@ -35,7 +35,10 @@ export function load(): FocusDB {
     return db;
   }
   const raw = fs.readFileSync(DB_PATH, 'utf-8');
-  return JSON.parse(raw) as FocusDB;
+  const db = JSON.parse(raw) as FocusDB;
+  // Always keep nextId in sync with actual tasks
+  db.nextId = db.tasks.length > 0 ? Math.max(...db.tasks.map(t => t.id)) + 1 : 1;
+  return db;
 }
 
 export function save(db: FocusDB): void {
@@ -46,7 +49,7 @@ export function save(db: FocusDB): void {
 export function addTask(db: FocusDB, title: string, priority: TaskPriority = 'medium'): Task {
   const now = new Date().toISOString();
   const task: Task = {
-    id: db.tasks.length > 0 ? Math.max(...db.tasks.map(t => t.id)) + 1 : 1,
+    id: db.nextId++,
     title,
     status: 'active',
     priority,
@@ -84,6 +87,14 @@ export function deleteTask(db: FocusDB, id: number): boolean {
   const idx = db.tasks.findIndex(t => t.id === id);
   if (idx === -1) return false;
   db.tasks.splice(idx, 1);
+  // Remove from any parent's subtasks list
+  for (const t of db.tasks) {
+    if (t.subtasks) {
+      t.subtasks = t.subtasks.filter(sid => sid !== id);
+    }
+  }
+  // Recalculate nextId so deleted IDs can be reused
+  db.nextId = db.tasks.length > 0 ? Math.max(...db.tasks.map(t => t.id)) + 1 : 1;
   save(db);
   return true;
 }
