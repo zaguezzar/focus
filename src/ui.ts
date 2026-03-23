@@ -389,7 +389,7 @@ export function launchUI(): void {
     } else if (task.status === 'done') {
       lines.push(`{${COLORS.activeFg}-fg}[r]{/} reactivate`);
     }
-    lines.push(`{${COLORS.accent}-fg}[s]{/} subtask  {${COLORS.accent}-fg}[#]{/} tag`);
+    lines.push(`{${COLORS.accent}-fg}[s]{/} subtask  {${COLORS.accent}-fg}[i]{/} tags`);
     lines.push(`{${COLORS.accent}-fg}[n]{/} note   {${COLORS.accent}-fg}[p]{/} priority`);
     lines.push(`{${COLORS.accent}-fg}[c]{/} branch   {${COLORS.accent}-fg}[g]{/} link`);
     lines.push(`{${COLORS.blockedFg}-fg}[x]{/} delete`);
@@ -513,7 +513,7 @@ export function launchUI(): void {
     lines.push(`{${COLORS.accent}-fg}[a]{/} new tag`);
     lines.push(`{${COLORS.accent}-fg}[e]{/} rename tag`);
     lines.push(`{${COLORS.blockedFg}-fg}[x]{/} delete tag`);
-    lines.push(`{${COLORS.dimFg}-fg}[#/Esc]{/} close`);
+    lines.push(`{${COLORS.dimFg}-fg}[i/Esc]{/} close`);
 
     detailPanel.setContent(lines.join('\n'));
   }
@@ -751,8 +751,8 @@ export function launchUI(): void {
     });
   });
 
-  // Toggle tag picker panel
-  screen.key(['#'], () => {
+  // Toggle tag picker panel (# or i)
+  function toggleTagPicker() {
     if (inputBox.hidden === false) return;
     if (tasks.length === 0) return;
     if (panelView === 'tags') {
@@ -762,7 +762,9 @@ export function launchUI(): void {
       tagPickerIndex = 0;
     }
     render();
-  });
+  }
+  screen.key(['#'], toggleTagPicker);
+  screen.key(['i'], toggleTagPicker);
 
   // Add note
   screen.key(['n'], () => {
